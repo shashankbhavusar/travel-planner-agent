@@ -13,7 +13,7 @@ def _normalize_text(value: str) -> str:
 
 
 def _extract_destination(query: str) -> str:
-    match = re.search(r"to\s+([A-Za-z ]+)", query, re.IGNORECASE)
+    match = re.search(r"to\\s+([A-Za-z ]+)", query, re.IGNORECASE)
     if match:
         return match.group(1).strip()
     return query.strip()
@@ -64,30 +64,35 @@ def search_flights(query: str) -> list[dict]:
         "access_key": API_KEY,
         "limit": 10,
     }
+
     try:
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
         data = response.json()
     except requests.RequestException:
         return _sample_flights(destination)
-    flights = []
-    if "data" in data:
-        for flight in data["data"][:5]:
-            airline = flight.get("airline", {}).get("name", "Unknown")
-            departure = flight.get(
-                "departure", {}
-            ).get("airport", "Unknown")
-            arrival = flight.get(
-                "arrival", {}
-            ).get("airport", "Unknown")
-            status = flight.get("flight_status", "Unknown")
-            flights.append(
-                f"""
-                Airline: {airline}
-                Departure: {departure}
-                Arrival: {arrival}
-                Status: {status}
-                """
-            )
 
-    return "\n".join(flights)
+    flights = []
+    for flight in data.get("data", [])[:10]:
+        if not _matches_query(flight, destination):
+            continue
+
+        airline = flight.get("airline", {}).get("name", "Unknown")
+        departure = flight.get("departure", {})
+        arrival = flight.get("arrival", {})
+        flights.append(
+            {
+                "airline": airline,
+                "departure_airport": departure.get("airport", "Unknown"),
+                "arrival_airport": arrival.get("airport", "Unknown"),
+                "departure_time": departure.get("scheduled", "Unknown"),
+                "arrival_time": arrival.get("scheduled", "Unknown"),
+                "status": flight.get("flight_status", "Unknown"),
+                "duration": flight.get("flight_duration", {}).get("airline", "Unknown"),
+                "price": "TBD",
+            }
+        )
+
+    if not flights:
+        return _sample_flights(destination)
+    return flights
