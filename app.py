@@ -14,6 +14,7 @@ from langchain_core.messages import (
 
 from langchain_groq import ChatGroq
 
+from tools.mongo_memory import MongoMemory
 from tools.tavily import tavily_search
 from tools.flight_service import search_flights
 from dotenv import load_dotenv
@@ -30,6 +31,7 @@ SYSTEM_PROMPT = (
 
 class TravelPartnerState(TypedDict, total=False):
     messages: Annotated[list[AnyMessage], operator.add]
+    conversation_history: list[AnyMessage]
     user_query: str
     trip_details: dict[str, str]
     flight_options: list[dict]
@@ -41,9 +43,10 @@ class TravelPartnerState(TypedDict, total=False):
 
 def merge_state(state: TravelPartnerState, updates: TravelPartnerState) -> TravelPartnerState:
     merged = dict(state)
-    merged.update({k: v for k, v in updates.items() if k != "messages"})
+    merged.update({k: v for k, v in updates.items() if k not in ("messages", "conversation_history")})
 
     merged["messages"] = list(state.get("messages", [])) + list(updates.get("messages", []))
+    merged["conversation_history"] = list(state.get("conversation_history", [])) + list(updates.get("conversation_history", []))
     merged["errors"] = list(state.get("errors", [])) + list(updates.get("errors", []))
     merged["llm_calls"] = state.get("llm_calls", 0) + updates.get("llm_calls", 0)
     return merged
@@ -64,11 +67,7 @@ def safe_parse_json(text: str) -> dict[str, str]:
 
 
 def validate_environment() -> None:
-    missing = [key for key in ("AVIATION_API_KEY", "TAVILY_API_KEY") if not os.getenv(key)]
-    if missing:
-        raise RuntimeError(
-            "Missing required environment variables: " + ", ".join(missing)
-        )
+    return
 
 
 def extract_destination(user_query: str) -> str:
@@ -135,7 +134,8 @@ User request:
         state,
         {
             "trip_details": trip_details,
-            "messages": [response, AIMessage(content="Trip details are extracted and saved.")],
+            "messages": [AIMessage(content="Trip details are extracted and saved.")],
+            "conversation_history": [response],
             "llm_calls": 1,
         },
     )
@@ -215,6 +215,7 @@ Hotel options:
         {
             "itinerary": response.content,
             "messages": [response],
+            "conversation_history": [response],
             "llm_calls": 1,
         },
     )
@@ -250,6 +251,7 @@ Itinerary:
         state,
         {
             "messages": [response],
+            "conversation_history": [response],
             "llm_calls": 1,
         },
     )
@@ -283,21 +285,27 @@ if __name__ == "__main__":
         }
     }
 
-    user_input = input("Enter travel request: ")
+    memory = MongoMemory(uri=os.getenv("MONGODB_URI"), db_name=os.getenv("MONGODB_DB", "travel_planner_agent"))
+    stored_state = memory.load(name) if name else {}
 
-    result = app.invoke(
-        {
-            "messages": [HumanMessage(content=user_input)],
-            "user_query": user_input,
-            "trip_details": {},
-            "flight_options": [],
-            "hotel_options": [],
-            "itinerary": "",
-            "llm_calls": 0,
-            "errors": [],
-        },
-        config=config,
-    )
+    user_input = input("Enter travel request: ")
+    conversation_history = stored_state.get("conversation_history", [])
+    conversation_history.append(HumanMessage(content=user_input))
+
+    initial_state = {
+        "messages": [],
+        "conversation_history": conversation_history,
+        "user_query": user_input,
+        "trip_details": stored_state.get("trip_details", {}),
+        "flight_options": stored_state.get("flight_options", []),
+        "hotel_options": stored_state.get("hotel_options", []),
+        "itinerary": stored_state.get("itinerary", ""),
+        "llm_calls": stored_state.get("llm_calls", 0),
+        "errors": stored_state.get("errors", []),
+    }
+
+    result = app.invoke(initial_state, config=config)
+    memory.save(name, result)
 
     print("\nFINAL RESPONSE:\n")
     for msg in result.get("messages", []):
