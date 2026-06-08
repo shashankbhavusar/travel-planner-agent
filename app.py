@@ -18,6 +18,8 @@ from tools.mongo_memory import MongoMemory
 from tools.tavily import tavily_search
 from tools.flight_service import search_flights
 from dotenv import load_dotenv
+from IPython.display import Image, display
+
 load_dotenv()
 
 agent_llm = ChatGroq(
@@ -66,10 +68,6 @@ def safe_parse_json(text: str) -> dict[str, str]:
             return {}
 
 
-def validate_environment() -> None:
-    return
-
-
 def extract_destination(user_query: str) -> str:
     match = re.search(r"to\s+([A-Za-z ]+)", user_query, re.IGNORECASE)
     if match:
@@ -113,10 +111,8 @@ User request:
 {state['user_query']}
 """
 
-    response = agent_llm.invoke([
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=prompt)
-    ])
+    messages = [SystemMessage(content=SYSTEM_PROMPT)] + list(state.get("conversation_history", [])) + [HumanMessage(content=prompt)]
+    response = agent_llm.invoke(messages)
 
     trip_details = safe_parse_json(response.content)
     if not trip_details:
@@ -205,10 +201,8 @@ Hotel options:
 {format_hotel_options(state.get('hotel_options', []))}
 """
 
-    response = agent_llm.invoke([
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=prompt),
-    ])
+    messages = [SystemMessage(content=SYSTEM_PROMPT)] + list(state.get("conversation_history", [])) + [HumanMessage(content=prompt)]
+    response = agent_llm.invoke(messages)
 
     return merge_state(
         state,
@@ -242,10 +236,8 @@ Itinerary:
 {state.get('itinerary', '')}
 """
 
-    response = agent_llm.invoke([
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=final_prompt),
-    ])
+    messages = [SystemMessage(content=SYSTEM_PROMPT)] + list(state.get("conversation_history", [])) + [HumanMessage(content=final_prompt)]
+    response = agent_llm.invoke(messages)
 
     return merge_state(
         state,
@@ -257,16 +249,93 @@ Itinerary:
     )
 
 
+def intent_and_clarify(state: TravelPartnerState) -> TravelPartnerState:
+    """Determine whether the user's query is a trip-planning request and whether clarification is needed.
+
+    Returns partial state with:
+    - `intent`: bool (is trip planning)
+    - `missing`: list of missing fields
+    - `clarify_question`: str if clarification is required
+    - appends an assistant `AIMessage` to `messages` and `conversation_history` when asking for clarification
+    """
+
+    prompt = f"""
+You are an intent classifier. Determine if the user's request is asking for travel planning help.
+
+RULES:
+1. If the query is NOT about travel/trip planning at all, set is_trip=false and provide a helpful message in 'clarify' explaining you only help with trip planning.
+2. If the query IS about travel but is missing critical information (destination, departure_date, or return_date), set a 'clarify' message asking for those missing fields.
+3. Only set clarify to an empty string if is_trip=true AND all critical fields are provided or can be inferred.
+
+Return only valid JSON with keys: is_trip (true/false), missing (list of missing fields among: destination, departure_date, return_date, season, travelers), clarify (a clarifying question/message, or empty string).
+
+User request:
+{state.get('user_query', '')}
+"""
+
+    messages = [SystemMessage(content=SYSTEM_PROMPT)] + list(state.get("conversation_history", [])) + [HumanMessage(content=prompt)]
+    response = agent_llm.invoke(messages)
+
+    parsed = safe_parse_json(response.content)
+    is_trip = bool(parsed.get("is_trip")) if isinstance(parsed, dict) else False
+    missing = parsed.get("missing") if isinstance(parsed, dict) else []
+    clarify = parsed.get("clarify", "") if isinstance(parsed, dict) else ""
+
+    # Enforce clarify logic: if not a trip query, always provide a clarify message
+    if not is_trip and not clarify:
+        clarify = "I can only help you plan trips. Please tell me about your trip: destination, travel dates, number of travelers, and any preferences."
+
+    # If trip query but missing critical fields, ensure we ask for them
+    if is_trip and not clarify and (not missing or any(f in missing for f in ["destination", "departure_date", "return_date"])):
+        critical_missing = [f for f in missing if f in ["destination", "departure_date", "return_date"]]
+        if critical_missing:
+            clarify = f"To help plan your trip, I need: {', '.join(critical_missing)}. Could you provide these details?"
+
+    messages = []
+    conv = []
+    if clarify:
+        ask = AIMessage(content=clarify)
+        messages.append(ask)
+        conv.append(ask)
+    else:
+        messages.append(AIMessage(content="Proceeding with trip planning."))
+
+    return merge_state(
+        state,
+        {
+            "intent": is_trip,
+            "missing": missing or [],
+            "clarify_question": clarify,
+            "messages": messages,
+            "conversation_history": conv,
+            "llm_calls": 1,
+        },
+    )
+
+
+def decide_intent(state: TravelPartnerState) -> str:
+    
+    if (state.intent is False) or state.get("clarify_question"):
+        return "go_back_to_user"
+    return "go_to_trip_planning"
+
 graph = StateGraph(TravelPartnerState)
 
+graph.add_node("intent_node", intent_and_clarify)
 graph.add_node("parse_trip_details", parse_trip_details)
+# graph.add_node("validate_trip_details", validate_trip_details)
 graph.add_node("flight_agent", get_flight_info)
 graph.add_node("hotel_agent", get_hotels_info)
 graph.add_node("itinerary_agent", get_itenary_info)
 graph.add_node("final_agent", final_agent)
 
-graph.add_edge(START, "parse_trip_details")
+graph.add_edge(START, "intent_node")
+graph.add_conditional_edges("intent_node", decide_intent, {
+    "go_back_to_user": "intent_node",
+    "go_to_trip_planning": "parse_trip_details",
+}) 
 graph.add_edge("parse_trip_details", "flight_agent")
+# graph.add_conditional_edges("validate_trip_details", _validate_trip_route)
 graph.add_edge("flight_agent", "hotel_agent")
 graph.add_edge("hotel_agent", "itinerary_agent")
 graph.add_edge("itinerary_agent", "final_agent")
@@ -274,44 +343,43 @@ graph.add_edge("final_agent", END)
 
 app = graph.compile()
 
+# display(Image(app.get_graph().draw_mermaid_png()))
+with open("graph.png", "wb") as file:
+    file.write(app.get_graph().draw_mermaid_png())
 
 if __name__ == "__main__":
-    validate_environment()
 
     name = input("Enter your name: ")
-    config = {
-        "configurable": {
-            "thread_id": name
-        }
-    }
+    config = {"configurable": {"thread_id": name}}
 
     memory = MongoMemory(uri=os.getenv("MONGODB_URI"), db_name=os.getenv("MONGODB_DB", "travel_planner_agent"))
     stored_state = memory.load(name) if name else {}
 
-    user_input = input("Enter travel request: ")
-    conversation_history = stored_state.get("conversation_history", [])
-    conversation_history.append(HumanMessage(content=user_input))
+    # Load previous conversation history (deserialized by MongoMemory)
+    conversation_history = list(stored_state.get("conversation_history", []))
+    print(f"Loaded {len(conversation_history)} prior message(s) for '{name}'.")
 
-    initial_state = {
-        "messages": [],
-        "conversation_history": conversation_history,
-        "user_query": user_input,
-        "trip_details": stored_state.get("trip_details", {}),
-        "flight_options": stored_state.get("flight_options", []),
-        "hotel_options": stored_state.get("hotel_options", []),
-        "itinerary": stored_state.get("itinerary", ""),
-        "llm_calls": stored_state.get("llm_calls", 0),
-        "errors": stored_state.get("errors", []),
-    }
+    while True:
+        user_input = input("\nEnter travel request (or type 'quit' to exit): ")
+        if user_input.strip().lower() in ("quit", "exit"):
+            print("Goodbye.")
+            break
 
-    result = app.invoke(initial_state, config=config)
-    memory.save(name, result)
+        # Append user's new message to conversation history
+        conversation_history.append(HumanMessage(content=user_input))
 
-    print("\nFINAL RESPONSE:\n")
-    for msg in result.get("messages", []):
-        print(msg.content)
+        initial_state = {
+            "messages": [],
+            "conversation_history": conversation_history,
+            "user_query": user_input,
+            "trip_details": stored_state.get("trip_details", {}),
+            "flight_options": stored_state.get("flight_options", []),
+            "hotel_options": stored_state.get("hotel_options", []),
+            "itinerary": stored_state.get("itinerary", ""),
+            "llm_calls": stored_state.get("llm_calls", 0),
+            "errors": stored_state.get("errors", []),
+        }
 
-    if errors := result.get("errors"):
-        print("\nWARNINGS:")
-        for error in errors:
-            print(f"- {error}")
+        result = app.invoke(initial_state, config=config)
+        memory.save(name, result)
+
