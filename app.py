@@ -23,7 +23,8 @@ from IPython.display import Image, display
 load_dotenv()
 
 agent_llm = ChatGroq(
-    model="llama-3.3-70b-versatile"
+    # model="llama-3.3-70b-versatile"
+    model="llama-3.1-8b-instant"
 )
 
 SYSTEM_PROMPT = (
@@ -261,7 +262,7 @@ def intent_and_clarify(state: TravelPartnerState) -> TravelPartnerState:
 
     prompt = f"""
 You are an intent classifier. Determine if the user's request is asking for travel planning help.
-
+Check in all prior messages for context. If it's a travel-related request, identify any missing critical information needed to plan a trip (destination, departure_date, return_date, season, travelers).
 RULES:
 1. If the query is NOT about travel/trip planning at all, set is_trip=false and provide a helpful message in 'clarify' explaining you only help with trip planning.
 2. If the query IS about travel but is missing critical information (destination, departure_date, or return_date), set a 'clarify' message asking for those missing fields.
@@ -269,17 +270,18 @@ RULES:
 
 Return only valid JSON with keys: is_trip (true/false), missing (list of missing fields among: destination, departure_date, return_date, season, travelers), clarify (a clarifying question/message, or empty string).
 
-User request:
-{state.get('user_query', '')}
 """
 
-    messages = [SystemMessage(content=SYSTEM_PROMPT)] + list(state.get("conversation_history", [])) + [HumanMessage(content=prompt)]
+    messages =  [HumanMessage(content=prompt)] + list(state.get("conversation_history", [])) + [HumanMessage(content=state.get('user_query', ''))]
     response = agent_llm.invoke(messages)
 
     parsed = safe_parse_json(response.content)
     is_trip = bool(parsed.get("is_trip")) if isinstance(parsed, dict) else False
     missing = parsed.get("missing") if isinstance(parsed, dict) else []
     clarify = parsed.get("clarify", "") if isinstance(parsed, dict) else ""
+
+    # print(f"parsed response: {parsed}")
+    # print(f"[intent_and_clarify] user_query={state.get('user_query')!r} is_trip={is_trip} missing={missing} clarify={clarify!r}")
 
     # Enforce clarify logic: if not a trip query, always provide a clarify message
     if not is_trip and not clarify:
@@ -297,6 +299,7 @@ User request:
         ask = AIMessage(content=clarify)
         messages.append(ask)
         conv.append(ask)
+        print(f"AI: {clarify}")
     else:
         messages.append(AIMessage(content="Proceeding with trip planning."))
 
@@ -315,7 +318,8 @@ User request:
 
 def decide_intent(state: TravelPartnerState) -> str:
     
-    if (state.intent is False) or state.get("clarify_question"):
+    if (state.get("intent") is False) or state.get("clarify_question"):
+        # print(f"[decide_intent] Clarify question: {state.get('clarify_question')}")
         return "go_back_to_user"
     return "go_to_trip_planning"
 
@@ -331,7 +335,7 @@ graph.add_node("final_agent", final_agent)
 
 graph.add_edge(START, "intent_node")
 graph.add_conditional_edges("intent_node", decide_intent, {
-    "go_back_to_user": "intent_node",
+    "go_back_to_user": END,
     "go_to_trip_planning": "parse_trip_details",
 }) 
 graph.add_edge("parse_trip_details", "flight_agent")
@@ -344,8 +348,8 @@ graph.add_edge("final_agent", END)
 app = graph.compile()
 
 # display(Image(app.get_graph().draw_mermaid_png()))
-with open("graph.png", "wb") as file:
-    file.write(app.get_graph().draw_mermaid_png())
+# with open("graph.png", "wb") as file:
+#     file.write(app.get_graph().draw_mermaid_png())
 
 if __name__ == "__main__":
 
@@ -372,14 +376,20 @@ if __name__ == "__main__":
             "messages": [],
             "conversation_history": conversation_history,
             "user_query": user_input,
-            "trip_details": stored_state.get("trip_details", {}),
-            "flight_options": stored_state.get("flight_options", []),
-            "hotel_options": stored_state.get("hotel_options", []),
-            "itinerary": stored_state.get("itinerary", ""),
-            "llm_calls": stored_state.get("llm_calls", 0),
-            "errors": stored_state.get("errors", []),
+            "trip_details": {},
+            "flight_options": [],
+            "hotel_options": [],
+            "itinerary": "",
+            "errors": [],
+            "llm_calls": 0,
         }
 
         result = app.invoke(initial_state, config=config)
-        memory.save(name, result)
+        conversation_history = result.get("conversation_history", conversation_history)
 
+        memory.save(
+            name,
+            {
+                "conversation_history": conversation_history
+            }
+        )
