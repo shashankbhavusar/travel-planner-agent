@@ -7,11 +7,12 @@ load_dotenv()
 API_KEY = os.getenv("AVIATION_API_KEY")
 
 
-def search_flights(query):
+def search_flights(state):
     url = "http://api.aviationstack.com/v1/flights"
     params = {
         "access_key": API_KEY,
-        "limit": 5
+        "limit": 5,
+        "search": f'{state["origin"]} to {state["destination"]}'
     }
     response = requests.get(url, params=params)
     data = response.json()

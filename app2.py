@@ -10,10 +10,15 @@ from langgraph.graph import StateGraph, START, END
 
 from langchain_groq import ChatGroq
 from dotenv import load_dotenv
+
+from tools.flight import search_flights
+from tools.tavily import tavily_search
+from tools.tavily import tavily_search
 load_dotenv()
 
 class TripState(TypedDict):
     user_message: str
+    origin: Optional[str]
     destination: Optional[str]
     days: Optional[int]
     budget: Optional[str]
@@ -21,6 +26,8 @@ class TripState(TypedDict):
     next_question: Optional[int]
     complete: bool
     response: Optional[str]
+    flight_info: str
+    hotel_info: str
 
 
 
@@ -29,6 +36,7 @@ llm = ChatGroq(
 )
 
 REQUIRED_FIELDS = [
+    "origin",
     "destination",
     "days",
     "budget",
@@ -43,6 +51,7 @@ Return only valid JSON.
 
 Schema:
 {{
+    "origin": str | null,
     "destination": str | null,
     "days": int | null,
     "budget": str | null,
@@ -86,6 +95,7 @@ User Message:
 
 def check_missing_fields(state: TripState):
     questions = {
+        "origin": "Where are you departing from?",
         "destination": "Where do you want to travel?",
         "days": "How many days do you want to travel?",
         "budget": "What is your budget for the trip?",
@@ -115,6 +125,50 @@ def plan_trip(state: TripState):
         "response": "Trip planned successfully"
     }
 
+
+def get_flight_info(state:TripState) -> TripState:
+    flight_data = search_flights(state)
+    return {
+        **state,
+        "flight_info": flight_data
+    }
+
+def get_hotels_info(state:TripState) -> TripState:
+    query = f"Best hotels for {state['destination']} for {state['days']} days"
+    hotels_data = tavily_search(query)
+    return {
+        **state,
+        "hotel_info": hotels_data
+    }
+
+def get_itenary_info(state:TripState) -> TripState:
+    prompt = f"""
+    Create a travel itinerary.
+    User Query:
+    Origin: {state['origin']}
+    Destination: {state['destination']}
+    Days: {state['days']}
+    Budget: {state['budget']}
+
+    Flight Results:
+    {state['flight_info']}
+
+    Hotel Results:
+    {state['hotel_info']}
+    """
+    
+    response = llm.invoke([
+        SystemMessage(
+            content="You are an expert travel planner"
+        ),
+        HumanMessage(content=prompt)
+    ])
+
+    return {
+        **state,
+        "response": response.content,
+    }
+
 def router(state: TripState):
     if state["complete"]:
         return "plan_trip_edge"
@@ -129,28 +183,38 @@ builder.add_node("extract_info", extract_info)
 builder.add_node("check_missing_fields", check_missing_fields)
 builder.add_node("ask_user", ask_user)
 builder.add_node("plan_trip", plan_trip)
+builder.add_node("get_flight_info", get_flight_info)
+builder.add_node("get_hotels_info", get_hotels_info)
+builder.add_node("get_itenary_info", get_itenary_info)
 
 builder.set_entry_point("extract_info")
 
 builder.add_edge("extract_info", "check_missing_fields")
 
 builder.add_conditional_edges("check_missing_fields", router,{
-    "plan_trip_edge": "plan_trip",
+    "plan_trip_edge": "get_flight_info",
     "ask_user_edge": "ask_user"
 })
 
+builder.add_edge("get_flight_info", "get_hotels_info")
+builder.add_edge("get_hotels_info", "get_itenary_info")
+
 builder.add_edge("ask_user", END)
-builder.add_edge("plan_trip", END)
+builder.add_edge("get_itenary_info", END)
 
 graph = builder.compile()
 
 state = {
-    "destination":None,
-    "days":None,
-    "budget":None,
-    "travelers":None,
+    "origin": None,
+    "destination": None,
+    "days": None,
+    "budget": None,
+    "travelers": None,
     "next_question": None,
     "complete": False,
+    "response": None,
+    "flight_info": None,
+    "hotel_info": None
 }
 
 
