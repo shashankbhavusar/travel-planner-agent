@@ -10,13 +10,15 @@ from langgraph.graph import StateGraph, START, END
 
 from langchain_groq import ChatGroq
 from dotenv import load_dotenv
-
+from typing import Annotated
+from langgraph.graph.message import add_messages
 from tools.flight import search_flights
 from tools.tavily import tavily_search
-from tools.tavily import tavily_search
+from memory import checkpointer
 load_dotenv()
 
 class TripState(TypedDict):
+    messages: Annotated[list[AnyMessage], add_messages]
     user_message: str
     origin: Optional[str]
     destination: Optional[str]
@@ -90,6 +92,11 @@ User Message:
     for key, value in extracted.items():
         if value is not None:
             updated_state[key] = value
+    
+    updated_state["messages"] = (
+        state.get("messages", [])
+        + [HumanMessage(content=state["user_message"])]
+    )
 
     return updated_state
 
@@ -166,6 +173,7 @@ def get_itenary_info(state:TripState) -> TripState:
 
     return {
         **state,
+        "messages": state.get("messages", []) + [AIMessage(content=response.content)],
         "response": response.content,
     }
 
@@ -202,9 +210,13 @@ builder.add_edge("get_hotels_info", "get_itenary_info")
 builder.add_edge("ask_user", END)
 builder.add_edge("get_itenary_info", END)
 
-graph = builder.compile()
+
+graph = builder.compile(
+    checkpointer=checkpointer
+)
 
 state = {
+    "messages": [],
     "origin": None,
     "destination": None,
     "days": None,
@@ -217,18 +229,28 @@ state = {
     "hotel_info": None
 }
 
+user_id = input("Enter User ID: ")
 
+config = {
+    "configurable": {
+        "thread_id": user_id
+    }
+}
 
 while True:
     user_input = input("Enter your travel request: ")
-    state["user_message"] = user_input
 
-    response = graph.invoke(state)
+    response = graph.invoke(
+        {
+            "user_message": user_input
+        },
+        config=config
+    )
 
-    print(f"AI: {response['response']}")
+    # print(f"AI: {response['response']}")
+    snapshot = graph.get_state(config)
 
-    state = response
+    print(snapshot.values)
 
-    print(f"State at the end of run: {state}")
     if response["complete"]:
         break
