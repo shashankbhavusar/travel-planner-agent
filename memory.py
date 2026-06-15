@@ -14,3 +14,6 @@ checkpointer = MongoDBSaver(
     db_name="travel-planer-agent",
     collection_name="checkpoints"
 )
+
+supervisor_db = client["supervisor_memory"]
+supervisor_collection = supervisor_db["chat_history"]
