@@ -21,6 +21,7 @@ npm run dev
 
 - Open `http://localhost:5173` in your browser (Vite dev server).
 - The frontend sends requests to `http://localhost:8000/api/message` by default. Keep the backend running.
+- Conversation history is loaded from `GET /api/history?user_id=...` when the frontend starts or the User ID changes.
 
 Notes:
 

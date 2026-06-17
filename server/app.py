@@ -8,7 +8,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from supervisor import general_chat, supervisor
 from travel_agent import travel_agent
-from supervisor_memory import save_conversation
+from supervisor_memory import load_messages, save_conversation
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -32,6 +32,11 @@ class MessageRequest(BaseModel):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/history")
+async def get_history(user_id: str):
+    return {"messages": load_messages(user_id)}
 
 
 @app.post("/api/message")

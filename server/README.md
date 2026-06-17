@@ -18,3 +18,4 @@ Endpoints:
 
 - `GET /health` - simple health check
 - `POST /api/message` - body: `{ "user_id": "user1", "message": "Hello" }` returns agent response
+- `GET /api/history?user_id=user1` - returns stored conversation history for the given user

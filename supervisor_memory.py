@@ -1,4 +1,5 @@
 from memory import supervisor_collection
+from datetime import datetime
 
 
 def load_messages(user_id: str):
@@ -37,14 +38,18 @@ def save_conversation(
 
     messages = load_messages(user_id)
 
+    now = datetime.utcnow().isoformat() + 'Z'
+
     messages.append({
         "type": "human",
-        "content": user_message
+        "content": user_message,
+        "created_at": now
     })
 
     messages.append({
         "type": "ai",
-        "content": ai_response
+        "content": ai_response,
+        "created_at": now
     })
 
     messages = messages[-100:]
