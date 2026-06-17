@@ -1,6 +1,6 @@
 from supervisor import general_chat, supervisor
 from travel_agent import travel_agent
-
+from supervisor_memory import save_conversation
 
 sessions = {}
 user_id = input("User ID: ")
@@ -24,15 +24,22 @@ while True:
 
     if decision["route"] == "travel":
 
-        response = travel_agent(
+        result = travel_agent(
             user_id=user_id,
             message=user_message
         )
 
-        print(response)
+        save_conversation(
+            user_id,
+            user_message,
+            result["response"]
+        )
 
-        if response.get("trip_finished"):
+        # return result["response"]
 
+        print(result)
+
+        if result.get("trip_finished"):
             session["active_agent"] = None
 
     else:
@@ -41,6 +48,14 @@ while True:
             user_id,
             user_message
         )
+
+        save_conversation(
+            user_id,
+            user_message,
+            answer
+        )
+
+        # return answer
 
         print(answer)
 

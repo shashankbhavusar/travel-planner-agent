@@ -13,7 +13,10 @@ def load_messages(user_id: str):
     return []
 
 
-def save_messages(user_id: str, messages):
+def save_messages(
+    user_id: str,
+    messages: list
+):
 
     supervisor_collection.update_one(
         {"user_id": user_id},
@@ -23,4 +26,30 @@ def save_messages(user_id: str, messages):
             }
         },
         upsert=True
+    )
+
+
+def save_conversation(
+    user_id: str,
+    user_message: str,
+    ai_response: str
+):
+
+    messages = load_messages(user_id)
+
+    messages.append({
+        "type": "human",
+        "content": user_message
+    })
+
+    messages.append({
+        "type": "ai",
+        "content": ai_response
+    })
+
+    messages = messages[-100:]
+
+    save_messages(
+        user_id,
+        messages
     )

@@ -29,9 +29,35 @@ llm = ChatGroq(
 def classify_intent(user_message: str):
 
     prompt = f"""
-Classify the user message.
+You are an intent classifier for a travel assistant.
 
-Return JSON only.
+Classify the user message into one of:
+
+1. travel
+- User wants to start a new trip.
+- User is providing travel details for a new trip (destination, budget, days, travelers, etc.).
+
+2. general
+- User is referring to an existing itinerary or previous travel discussion.
+- User wants to modify, improve, summarize, clarify, or ask questions about an existing plan.
+- Any non-travel conversation.
+
+Examples:
+"Plan a trip to Goa" -> travel
+"I want to visit Kerala for 5 days" -> travel
+"My budget is 50000" -> travel
+"Plan a new trip for me" -> travel
+
+"Improve the plan" -> general
+"Make the itinerary cheaper" -> general
+"How many days was the trip?" -> general
+"What was my budget?" -> general
+"Summarize the itinerary" -> general
+"Who are you?" -> general
+"improve day 2 plan" -> general
+"provide 3rd day itenary only" -> general
+
+Return ONLY valid JSON.
 
 Schema:
 {{
@@ -65,11 +91,11 @@ def general_chat(
     user_message: str
 ):
 
-    messages = load_messages(user_id)
+    stored_messages = load_messages(user_id)
 
     history = []
 
-    for msg in messages:
+    for msg in stored_messages:
 
         if msg["type"] == "human":
 
@@ -79,7 +105,7 @@ def general_chat(
                 )
             )
 
-        elif msg["type"] == "ai":
+        else:
 
             history.append(
                 AIMessage(
@@ -88,6 +114,7 @@ def general_chat(
             )
 
     history = history[-20:]
+
     history.append(
         HumanMessage(
             content=user_message
@@ -95,25 +122,24 @@ def general_chat(
     )
 
     response = llm.invoke(history)
+    # messages.append(
+    #     {
+    #         "type": "human",
+    #         "content": user_message
+    #     }
+    # )
 
-    messages.append(
-        {
-            "type": "human",
-            "content": user_message
-        }
-    )
+    # messages.append(
+    #     {
+    #         "type": "ai",
+    #         "content": response.content
+    #     }
+    # )
 
-    messages.append(
-        {
-            "type": "ai",
-            "content": response.content
-        }
-    )
-
-    save_messages(
-        user_id,
-        messages
-    )
+    # save_messages(
+    #     user_id,
+    #     messages
+    # )
 
     return response.content
 
