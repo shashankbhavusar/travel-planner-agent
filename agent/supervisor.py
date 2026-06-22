@@ -9,7 +9,7 @@ from langchain_core.messages import (
     AIMessage
 )
 
-from supervisor_memory import (
+from agent.supervisor_memory import (
     load_messages,
     save_messages
 )
@@ -122,25 +122,7 @@ def general_chat(
     )
 
     response = llm.invoke(history)
-    # messages.append(
-    #     {
-    #         "type": "human",
-    #         "content": user_message
-    #     }
-    # )
-
-    # messages.append(
-    #     {
-    #         "type": "ai",
-    #         "content": response.content
-    #     }
-    # )
-
-    # save_messages(
-    #     user_id,
-    #     messages
-    # )
-
+    
     return response.content
 
 def supervisor(user_message, session):
@@ -167,43 +149,3 @@ def supervisor(user_message, session):
         "route": "general"
     }
 
-# sessions = {}
-
-# while True:
-
-#     user_id = input("User ID: ")
-
-#     user_message = input("Message: ")
-
-#     session = sessions.get(
-#         user_id,
-#         {
-#             "active_agent": None
-#         }
-#     )
-
-#     decision = supervisor(
-#         user_message,
-#         session
-#     )
-
-#     if decision["route"] == "travel":
-
-#         response = travel_agent(
-#             user_id=user_id,
-#             message=user_message
-#         )
-
-#         print(response)
-
-#         if response.get("trip_finished"):
-
-#             session["active_agent"] = None
-
-#     else:
-
-#         answer = general_chat(user_message)
-
-#         print(answer)
-
-#     sessions[user_id] = session

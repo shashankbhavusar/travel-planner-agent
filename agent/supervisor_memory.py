@@ -1,4 +1,4 @@
-from memory import supervisor_collection
+from agent.memory import supervisor_collection
 from datetime import datetime
 
 

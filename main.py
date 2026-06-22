@@ -1,6 +1,6 @@
-from supervisor import general_chat, supervisor
-from travel_agent import travel_agent
-from supervisor_memory import save_conversation
+from agent.supervisor import general_chat, supervisor
+from agent.travel_agent import travel_agent
+from agent.supervisor_memory import save_conversation
 
 sessions = {}
 user_id = input("User ID: ")

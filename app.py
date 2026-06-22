@@ -14,8 +14,8 @@ from langchain_core.messages import (
 
 from langchain_groq import ChatGroq
 
-from tools.tavily import tavily_search
-from tools.flight import search_flights
+from agent.tools.tavily import tavily_search
+from agent.tools.flight import search_flights
 from dotenv import load_dotenv
 load_dotenv()
 

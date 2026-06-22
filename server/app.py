@@ -6,9 +6,9 @@ import sys
 # ensure project root is on sys.path so we can import existing modules
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from supervisor import general_chat, supervisor
-from travel_agent import travel_agent
-from supervisor_memory import load_messages, save_conversation
+from agent.supervisor import general_chat, supervisor
+from agent.travel_agent import travel_agent
+from agent.supervisor_memory import load_messages, save_conversation
 
 from fastapi.middleware.cors import CORSMiddleware
 
