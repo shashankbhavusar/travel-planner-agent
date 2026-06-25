@@ -1,59 +1,306 @@
-# Travel Planner Agent — UI Integration
+# ✈️ Travel Planner Agent
 
-This workspace contains the original agent code and a frontend + backend integration.
+An AI-powered travel planning assistant that creates personalized travel itineraries based on user preferences, budget, travel dates, destinations, and interests. The agent leverages LLMs, LangGraph workflows, memory, and travel APIs to provide intelligent and interactive trip planning.
 
-Quick start:
+## 🚀 Features
 
-1. Start the backend API:
+- 🗺️ Personalized itinerary generation
+- ✈️ Flight recommendations
+- 🏨 Hotel suggestions
+- 💰 Budget-aware planning
+- 🧠 AI-powered travel assistant
+- 🔄 Multi-turn conversations
+- 💾 Persistent memory using MongoDB
+- ❓ Dynamic clarification for missing details
+- 📅 Day-wise itinerary generation
+- 🌍 Multi-destination support
+- 🔌 Tool-based architecture
 
+## 🏛️ Architecture
+
+```mermaid
+graph TD
+
+A[User] --> B[Travel Planner Agent]
+
+B --> C[Intent Classifier]
+
+C --> D[Clarification Agent]
+C --> E[Travel Planning Agent]
+
+D --> B
+
+E --> F[LangGraph Workflow]
+
+F --> G[Flight Search Tool]
+F --> H[Hotel Search Tool]
+F --> I[Itinerary Generator]
+
+G --> J[Travel APIs]
+H --> J
+
+I --> K[LLM]
+
+F --> L[(MongoDB Memory)]
+
+K --> M[Final Travel Plan]
+
+M --> A
 ```
-python -m pip install -r server/requirements.txt
-uvicorn server.app:app --reload --host 0.0.0.0 --port 8000
+
+## 🔄 Workflow
+
+```mermaid
+sequenceDiagram
+
+participant User
+participant Agent
+participant Memory
+participant Tools
+participant LLM
+
+User->>Agent: Travel Request
+
+Agent->>Memory: Retrieve Context
+Memory-->>Agent: User Preferences
+
+Agent->>Agent: Validate Inputs
+
+alt Missing Information
+    Agent->>User: Ask Clarification
+    User->>Agent: Provide Details
+end
+
+Agent->>Tools: Search Flights & Hotels
+Tools-->>Agent: Travel Information
+
+Agent->>LLM: Generate Itinerary
+LLM-->>Agent: Travel Plan
+
+Agent->>Memory: Save Context
+
+Agent-->>User: Final Itinerary
 ```
 
-2. Start the frontend (Vite + React):
+## 🧩 Agent Flow
 
+### Intent Classification
+
+Determines whether the user is:
+
+- Planning a new trip
+- Modifying an existing itinerary
+- Requesting recommendations
+- Asking travel-related questions
+
+### Clarification Flow
+
+Collects missing information such as:
+
+- Destination
+- Travel dates
+- Budget
+- Number of travelers
+- Interests and preferences
+
+### Planning Engine
+
+Generates:
+
+- Day-wise itinerary
+- Flight suggestions
+- Hotel recommendations
+- Activity recommendations
+
+### Memory Layer
+
+Stores:
+
+- Previous conversations
+- Travel preferences
+- Existing itineraries
+
+Enabling users to continue planning from where they left off.
+
+## 🏗️ Tech Stack
+
+| Component | Technology |
+|------------|------------|
+| Workflow Engine | LangGraph |
+| LLM Framework | LangChain |
+| Language | Python |
+| Database | MongoDB |
+| Memory | MongoDB Checkpointer |
+| Validation | Pydantic |
+| APIs | Aviation & Travel APIs |
+| Environment | Python Virtual Environment |
+
+## 📂 Project Structure
+
+```text
+travel-planner-agent/
+│
+├── agents/
+│   ├── planner_agent.py
+│   ├── classifier_agent.py
+│   └── clarification_agent.py
+│
+├── tools/
+│   ├── flight_search.py
+│   ├── hotel_search.py
+│   └── itinerary_generator.py
+│
+├── graphs/
+│   └── travel_graph.py
+│
+├── memory/
+│   └── mongodb_checkpointer.py
+│
+├── prompts/
+│
+├── models/
+│
+├── main.py
+│
+├── requirements.txt
+│
+└── README.md
 ```
-cd frontend
-npm install
-npm run dev
+
+## ⚙️ Installation
+
+### Clone Repository
+
+```bash
+git clone https://github.com/shashankbhavusar/travel-planner-agent.git
+
+cd travel-planner-agent
 ```
 
-- Open `http://localhost:5173` in your browser (Vite dev server).
-- The frontend sends requests to `http://localhost:8000/api/message` by default. Keep the backend running.
-- Conversation history is loaded from `GET /api/history?user_id=...` when the frontend starts or the User ID changes.
+### Create Virtual Environment
 
-Notes:
+```bash
+python -m venv venv
+```
 
-- The backend imports the existing agent functions from the project root. Run the server from the project root so imports resolve correctly.
-- Conversation state is kept per `user_id` in memory on the backend; the frontend persists `user_id` and conversation locally so the agent continues from where it left when you reuse the same `user_id`.
-- For production use, add authentication, persistent session storage, and a proper build/deployment pipeline.
+### Activate Virtual Environment
 
-## Architecture
+#### Windows
 
-This app is built as a split frontend/backend service with an AI-powered agent core.
+```bash
+venv\Scripts\activate
+```
 
-- `frontend/`: React + Vite UI that sends user messages to the backend and displays the agent response.
-- `server/app.py`: FastAPI backend exposing `POST /api/message` and `GET /api/history`.
-- `agent/supervisor.py`: Routes incoming requests into either the travel planner flow or a general chat flow. It uses the `ChatGroq` LLM to classify intent, keeps track of whether a travel session is active, and selects the correct path.
-- `agent/travel_agent.py`: Implements the travel planning pipeline as a LangGraph state machine. This file defines the travel agent's state (`TripState`), the sequence of graph nodes, and the complete flow:
-  - `extract_info`: parses the user's travel request into structured trip data using LLM extraction.
-  - `check_missing_fields`: validates required trip fields and asks follow-up questions if needed.
-  - `get_flight_info`: calls `agent/tools/flight.py` to fetch flight search results based on the trip state.
-  - `get_hotels_info`: calls `agent/tools/tavily.py` to fetch hotel recommendations.
-  - `get_itenary_info`: generates the final itinerary using the LLM and aggregated travel data.
-  - `plan_trip` / `ask_user`: routes either to completion or a follow-up question depending on missing information.
-- `agent/tools/flight.py`: Encapsulates flight lookup functionality for the travel agent.
-- `agent/tools/tavily.py`: Encapsulates hotel search functionality for the travel agent.
-- `agent/supervisor_memory.py`: Saves and loads the user conversation history from a persistence layer, enabling the general chat flow to maintain context and replay past messages.
-- `agent/memory.py`: Provides persistence and checkpointing support for the LangGraph agent state across invocations.
+#### Linux / Mac
 
-### Agent Core Details
+```bash
+source venv/bin/activate
+```
 
-The agent core is centered around the `agent/` package:
-- `agent/supervisor.py` decides whether a given user message should be handled by the travel planner or by a free-form chat assistant.
-- If the route is travel, `agent/travel_agent.py` runs a structured state machine that collects trip details, enriches them with flight and hotel data, and produces an itinerary response.
-- If the route is general chat, the system builds a history of past messages from `agent/supervisor_memory.py` and sends those to `ChatGroq` to maintain continuity.
-- The travel planner uses a LangGraph `StateGraph` to ensure each step is deterministic and can be checkpointed, while tool calls are isolated in `agent/tools/` modules.
+### Install Dependencies
 
-Architecture diagram: `architecture_diagram.svg`
+```bash
+pip install -r requirements.txt
+```
+
+## 🔑 Environment Variables
+
+Create a `.env` file:
+
+```env
+OPENAI_API_KEY=
+
+MONGODB_URI=
+
+AVIATION_API_KEY=
+
+HOTEL_API_KEY=
+```
+
+## ▶️ Running the Application
+
+```bash
+python main.py
+```
+
+## 💡 Example Query
+
+```text
+Plan a 5-day trip to Goa for 2 people.
+
+Budget: ₹40,000
+Travel Dates: July 10 - July 15
+Interests: Beaches, Nightlife, Water Sports
+```
+
+## 📋 Example Output
+
+```text
+Day 1
+- Arrival in Goa
+- Hotel Check-in
+- Sunset at Calangute Beach
+
+Day 2
+- Water Sports at Baga Beach
+- Explore Anjuna Market
+
+Day 3
+- Dudhsagar Falls
+- Spice Plantation Tour
+
+Day 4
+- Old Goa Churches
+- River Cruise
+
+Day 5
+- Local Shopping
+- Departure
+```
+
+## 🔮 Future Enhancements
+
+- Real-time flight pricing
+- Real-time hotel availability
+- Weather-aware itinerary planning
+- Google Maps integration
+- Expense tracking
+- Voice-enabled travel assistant
+- Multi-agent trip planning
+- Travel document management
+
+## 🤝 Contributing
+
+1. Fork the repository
+
+2. Create a feature branch
+
+```bash
+git checkout -b feature/new-feature
+```
+
+3. Commit your changes
+
+```bash
+git commit -m "Add new feature"
+```
+
+4. Push the branch
+
+```bash
+git push origin feature/new-feature
+```
+
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License.
+
+## 👨‍💻 Author
+
+**Shashank H T**
+
+GitHub: https://github.com/shashankbhavusar
+
+---
